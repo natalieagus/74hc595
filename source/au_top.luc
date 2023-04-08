@@ -1,0 +1,97 @@
+module au_top (
+    input clk,              // 100MHz clock
+    input rst_n,            // reset button (active low)
+    output led [8],         // 8 user controllable LEDs
+    input usb_rx,           // USB->Serial input
+    output usb_tx,          // USB->Serial output
+    output io_led [3][8],   // LEDs on IO Shield
+    output io_seg [8],      // 7-segment LEDs on IO Shield
+    output io_sel [4],      // Digit select on IO Shield
+    input io_button [5],    // 5 buttons on IO Shield
+    input io_dip [3][8]     // DIP switches on IO Shield
+  ) {
+  
+  sig rst;                  // reset signal
+  const CHAIN = 2;
+  const SPEED = 25; 
+  const D = $reverse(b00111101); // pump 0 first, then 0, then 1, then 1, ...
+  const A = $reverse(b01110111); 
+  const E = $reverse(b01001111); 
+  const B = $reverse(b00011111); 
+  
+  const TEST = {B, E, A, D}; // pump D first, then A, then E, then B
+
+  
+  .clk(clk) {
+    // The reset conditioner is used to synchronize the reset signal to the FPGA
+    // clock. This ensures the entire FPGA comes out of reset at the same time.
+    reset_conditioner reset_cond;
+    button_conditioner user_button;
+    edge_detector user_button_edge(#RISE(1), #FALL(0));
+    .rst(rst) {
+      driver_74hc595 driver(#CHAIN(CHAIN), #SPEED(SPEED));
+      dff write_pointer[2](#INIT(0));
+      dff driver_busy(#INIT(1));
+    }
+  }
+  
+  always {
+    reset_cond.in = ~rst_n;   // input raw inverted reset signal
+    rst = reset_cond.out;     // conditioned reset
+    
+    led = c{3b0, io_button};  // connect buttons to LEDs
+    user_button.in = io_button[0];
+    user_button_edge.in = user_button.out;
+    
+    usb_tx = usb_rx;          // loop serial port
+    
+    io_seg = 0; // connect segments to the driver
+    io_sel = 0; // connect digit select to the driver
+    
+    driver.new = 0;
+    driver.data = CHAINx{{TEST[write_pointer.q]}};
+    
+    if (driver_busy.q == 1){
+      driver_busy.d = driver.busy;
+    }
+    
+    // if driver is not busy anymore
+    if (~driver_busy.q){
+      // pump new data when driver is no longer busy and io_button[0] is pressed
+      if (user_button_edge.out){
+        driver.new = 1;
+        driver_busy.d = 1; //  reset 
+        // increment test data 
+        write_pointer.d = write_pointer.q + 1;
+      }
+    }
+    
+    // -------- DEBUG SIGNALS -------- //
+    io_led[0] = TEST[write_pointer.q];  
+    led = CHAIN;
+    
+    io_led[2][7] = driver.ds; // data transferred 
+    io_led[2][6] = driver.shcp; // shift register clock 
+    io_led[2][5] = driver.stcp; // store register clock 
+    io_led[2][4] = driver.mr; // shift register reset (LOW to reset, otherwise remain HIGH) 
+    io_led[2][3] = driver.oe; // output enable (LOW to show output at Q0 to Q7)
+
+    // tells us which state the driver is in
+    led[7:5] = driver.debug_state;
+    
+    // tells us which bit is being written 
+    io_led[1][7:4] = driver.debug_chain_pointer;
+    io_led[1][2:0] = driver.debug_data_pointer;
+    // ---------------------------- //
+    
+    // --------- OUTPUT SIGNALS ---------- // 
+    // connect oe, mr, shcp, and stcp to all shift registers in the chain 
+    // connect ds to the first shift register in the chain
+    io_seg[4] = driver.oe; // pin A45, output enable (LOW to show output at Q0 to Q7)
+    io_seg[3] = driver.mr; // pin A46, shift register reset (LOW to reset, otherwise remain HIGH)
+    io_seg[2] = driver.shcp; // pin A48, shift register clock 
+    io_seg[7] = driver.stcp; // pin A49, storage register clock
+    io_seg[5] = driver.ds; // pin A3, data to shift register 
+    // ---------------------------- //
+    
+}

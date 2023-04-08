@@ -1,0 +1,123 @@
+module driver_74hc595 #(
+    CHAIN = 1 : CHAIN > 0, // how many 74hc595 are chained together? 
+    // Alchitry Au has 100Mhz clock
+    // setting SPEED to 5 will cover all output voltages
+    SPEED = 25 :  SPEED > 0 // how fast sclk can be? 5Mhz is recommended value  that covers 2V, 4V, and 6V 
+  )(
+    input clk,  // clock
+    input rst,  // reset
+    input new,
+    input data[CHAIN][8], // input data for all shift registers in the chain at once and then it will be latched
+    output ds,
+    output shcp, // shift register clock 
+    output stcp, // storage register clock, on rising edge, all storage reg captures shift reg content 
+    output mr, // master reset, when LOW we clear all shift register regardless of clock
+    output oe, // output enable, when LOW we observe output at Q0 to Q7 pins of 74hc595 
+    output busy,
+    // for debugging, to know which state we are at
+    output debug_state[3],
+    output debug_current_data[CHAIN][8],
+    output debug_data_pointer[3],
+    output debug_chain_pointer[$clog2(CHAIN)+1]
+    
+  ) {
+  
+  counter shiftreg_clock(#SIZE(1), #DIV(SPEED), .rst(rst), .clk(clk));
+  edge_detector shiftreg_clock_edge(.clk(clk), #RISE(1), #FALL(0));
+  
+  fsm state(#INIT(IDLE), .clk(clk), .rst(rst)) = {LOAD, TRANSFER, LATCH, RESET, IDLE};
+  dff current_data[CHAIN][8](#INIT(CHAINx{{8b0}}), .clk(clk), .rst(rst));
+  dff data_pointer[3](.clk(clk), .rst(rst));
+  dff chain_pointer[$clog2(CHAIN)+1](#INIT(1), .clk(clk), .rst(rst));
+
+
+  always {
+    ds = 0;
+    oe = 0; // always output by default
+    mr = 1;  // no reset by default 
+    
+    stcp = 0; // don't store anything  
+    
+    shiftreg_clock_edge.in = shiftreg_clock.value;
+    
+    shcp = shiftreg_clock.value; // shift register clock 
+    busy = state.q != state.IDLE;
+    
+    debug_state = b000; 
+    
+    debug_current_data = current_data.q;
+    
+    debug_data_pointer = data_pointer.q;
+    debug_chain_pointer = chain_pointer.q;
+    
+    case (state.q){
+      state.IDLE:
+        debug_state = b111;
+        shcp = 0; // turn off shift register clock 
+        // wait for new data 
+        if (new){
+          state.d = state.LOAD;
+          
+          // store incoming data 
+          current_data.d = data;
+          
+          // reset our pointers
+          chain_pointer.d = 1; // start with 1 because we always have at least 1 reg
+          data_pointer.d = 0;
+        }
+      state.LOAD:
+         shcp = 0;
+         // standby, so that we transfer at the beginning of shcp clock cycle
+         if (shiftreg_clock_edge.out){
+         state.d = state.TRANSFER;
+        }
+        
+      state.TRANSFER:
+          debug_state = b001;
+          // send current data bit 
+          ds = current_data.q[chain_pointer.q-1][data_pointer.q];
+          
+          // at the next shift register clock, advance
+          if (shiftreg_clock_edge.out){
+              // increase data pointer 
+              data_pointer.d = data_pointer.q + 1;
+          
+              // have we written all 8bits?
+              if (&data_pointer.q){
+          
+                  // if yes, increase chain data_pointer
+                  chain_pointer.d = chain_pointer.q + 1;
+            
+                  // have we written to all chains?
+                  if (chain_pointer.q == CHAIN){
+                    // if yes, time to latch 
+                    state.d = state.LATCH;
+                  }
+              }
+          }
+        
+      state.LATCH:
+        debug_state = b010;
+        stcp = 1;
+        shcp = 0; // turn off shift register clock 
+        if (shiftreg_clock_edge.out){
+          state.d = state.RESET;
+        }
+      
+      state.RESET:
+        debug_state = b011;
+        // clear shift register, let storage register unchanged 
+        mr = 0;
+        // clear current data dff 
+        current_data.d = CHAINx{{8b0}};
+        shcp = 0; // turn off shift register clock
+        if (shiftreg_clock_edge.out){
+          // goes back to idle
+          state.d = state.IDLE;
+        }
+      
+    }
+      
+    
+  }
+}
