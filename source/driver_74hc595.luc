@@ -2,7 +2,7 @@ module driver_74hc595 #(
     CHAIN = 1 : CHAIN > 0, // how many 74hc595 are chained together? 
     // Alchitry Au has 100Mhz clock
     // setting SPEED to 5 will cover all output voltages
-    SPEED = 25 :  SPEED > 0 // how fast sclk can be? 5Mhz is recommended value  that covers 2V, 4V, and 6V 
+    SPEED = 5 > 0 // how fast sclk can be? 5Mhz is recommended value  that covers 2V, 4V, and 6V 
   )(
     input clk,  // clock
     input rst,  // reset
