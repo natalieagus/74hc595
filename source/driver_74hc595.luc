@@ -36,17 +36,14 @@ module driver_74hc595 #(
     oe = 0; // always output by default
     mr = 1;  // no reset by default 
     
-    stcp = 0; // don't store anything  
+    stcp = 0; // don't store anything yet 
     
     shiftreg_clock_edge.in = shiftreg_clock.value;
-    
     shcp = shiftreg_clock.value; // shift register clock 
     busy = state.q != state.IDLE;
     
     debug_state = b000; 
-    
     debug_current_data = current_data.q;
-    
     debug_data_pointer = data_pointer.q;
     debug_chain_pointer = chain_pointer.q;
     
