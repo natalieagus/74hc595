@@ -4,7 +4,7 @@ The 74HC595 is an eight bit shift register accepts data from the serial input (D
 
 ## Demo
 
-The code is set to run with two 74HC595 daisy-chained.
+The code is set to run with two 74HC595 daisy-chained by default. You can modify the `CHAIN` value depending on your hardware setup (read below).
 
 ### How to run
 
@@ -39,7 +39,7 @@ They're set to the following `Br` pins:
     // ---------------------------- //
 ```
 
-You can modify `CHAIN` in when instantiating `driver_74hc595` module depending on how many shift register are daisy chained. `SPEED` can also be varied when instantiating that module in case you want to debug, but the smallest recommended value is 5.
+You can modify `CHAIN` when instantiating `driver_74hc595` module depending on how many shift register are daisy chained. `SPEED` can also be varied when instantiating that module in case you want to debug, but the smallest recommended value is 5.
 
 View the timing diagram in the datasheet to know how `74HC595` works:
 
